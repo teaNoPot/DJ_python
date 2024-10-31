@@ -9,7 +9,7 @@ from scipy.spatial.distance import cdist
 import numpy as np
 from datetime import date
 
-filename = "test_dataset.csv"
+filename = "moonz_weds.csv"
 
 # read the data
 data = pd.read_csv(filename, skipinitialspace=True)
@@ -52,48 +52,47 @@ def suggest_next_song(current_track_id):
     return similar_songs[['Track Name', 'Artist Name(s)', 'Tempo', 'Valence', 'Danceability']].head(5)
 
 # This one generate the playlist 
-def generate_playlist(data):
-    # Make a copy to prevent modifying the original DataFrame
+def generate_playlist(data, tempo_weight=1.0, valence_weight=1.5, switch_threshold=10):
+    # Copy to prevent modification of the original data
     playlist_data = data.copy()
-
-    # List to hold the playlist order (track IDs)
     playlist_order = []
-
-    # Select the first song (you could pick any starting song here; we'll use the first row)
+    
     current_song = playlist_data.iloc[0]
     playlist_order.append(current_song['Track ID'])
 
-    # Loop until we've added all songs to the playlist
     while len(playlist_order) < len(playlist_data):
-        # Get the current song's cluster and filter for songs in the same cluster
         current_cluster = current_song['Cluster']
-        potential_songs = playlist_data[(playlist_data['Cluster'] == current_cluster) & (~playlist_data['Track ID'].isin(playlist_order))]
+        potential_songs = playlist_data[(playlist_data['Cluster'] == current_cluster) & 
+                                        (~playlist_data['Track ID'].isin(playlist_order))]
 
-        # If no songs are left in the cluster, switch to a new cluster
-        if potential_songs.empty:
+        # Early switch if no nearby song in the same cluster
+        if potential_songs.empty or all(
+            (abs(potential_songs['Tempo'] - current_song['Tempo']) +
+             abs(potential_songs['Valence'] - current_song['Valence']) > switch_threshold)):
             potential_songs = playlist_data[~playlist_data['Track ID'].isin(playlist_order)]
-
-        # Sort remaining songs by proximity to the current song's tempo or other feature (e.g., Valence)
-        # Here we prioritize smooth transitions in `Tempo` and `Valence`
+        
+        # Calculate weighted distance
         potential_songs = potential_songs.copy()
-        potential_songs.loc[:, 'distance'] = (potential_songs['Tempo'] - current_song['Tempo']).abs() + (potential_songs['Valence'] - current_song['Valence']).abs()
+        potential_songs['distance'] = (
+            tempo_weight * (potential_songs['Tempo'] - current_song['Tempo']).abs() +
+            valence_weight * (potential_songs['Valence'] - current_song['Valence']).abs()
+        )
+        
         next_song = potential_songs.sort_values(by='distance').iloc[0]
         
-        # Add the selected song to the playlist and update the current song
         playlist_order.append(next_song['Track ID'])
         current_song = next_song
 
-    # Return playlist order (Track IDs)
     return playlist_order
 
 
-# Save playlist
 # Generate the playlist order
 playlist_order = generate_playlist(data)
 
-# Output ordered playlist based on Track IDs
-#ordered_playlist = data.set_index('Track ID').loc[playlist_order]
+# Reorder the DataFrame based on the playlist_order and keep 'Track ID' as a column
+ordered_playlist = data.loc[data['Track ID'].isin(playlist_order)]
+ordered_playlist = ordered_playlist.set_index('Track ID').loc[playlist_order].reset_index()
 
 # Save the ordered playlist to a CSV file
-output_filename = "ordered_playlist.csv"
-playlist_order.to_csv(output_filename, index=False)
+output_filename = "output2.csv"
+ordered_playlist.to_csv(output_filename, index=False)
