@@ -85,7 +85,6 @@ def generate_playlist(data, tempo_weight=1.0, valence_weight=1.5, switch_thresho
 
     return playlist_order
 
-
 # Generate the playlist order
 playlist_order = generate_playlist(data)
 
